@@ -1,0 +1,2 @@
+requests
+aiortc==1.8.0
