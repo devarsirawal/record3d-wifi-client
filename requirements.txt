@@ -1,2 +1,4 @@
-requests
-aiortc==1.8.0
+asyncio
+aiohttp
+aiortc
+opencv-python
