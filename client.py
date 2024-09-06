@@ -1,11 +1,10 @@
-from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaBlackhole, MediaRecorder
-from av import VideoFrame
-import aiohttp
-import argparse
 import asyncio
-import cv2
 import json
+import aiohttp
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaRecorder
+from av import VideoFrame
+import cv2
 
 
 class SignalingServer:
@@ -36,20 +35,22 @@ class SignalingServer:
                 print(f"Error while sending the answer: {e}")
 
 
-async def start_receiving_stream(
-    peer_connection, signaling_server, recorder, visualize
-):
-    # Create a flag to control the video display loop
-    video_display_running = False
+async def start_receiving_stream(server_url):
+    signaling_server = SignalingServer(server_url)
+    peer_connection = RTCPeerConnection()
+
+    video_display_running = True
+
+    # Create a MediaRecorder to save the video
+    recorder = MediaRecorder("output.mp4")
 
     @peer_connection.on("track")
     async def on_track(track):
         print(f"Received {track.kind} track")
         if track.kind == "video":
             print("Adding track to recorder")
-            if visualize:
-                video_display_running = True
-                asyncio.create_task(display_video(track))
+            print("Starting video display")
+            asyncio.create_task(display_video(track))
             recorder.addTrack(track)
             await recorder.start()
 
@@ -62,7 +63,10 @@ async def start_receiving_stream(
             try:
                 frame = await track.recv()
                 if isinstance(frame, VideoFrame):
+                    # Convert the VideoFrame to a numpy array
                     img = frame.to_ndarray(format="bgr24")
+
+                    # Display the frame using OpenCV
                     cv2.imshow("Video Stream", img)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
@@ -106,37 +110,13 @@ async def start_receiving_stream(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Connect to Record3D")
-    parser.add_argument(
-        "server_url",
-        default="127.0.0.1",
-        help="IP address of the Record3D device.",
-    )
-    parser.add_argument("-r", "--record-to", help="Write received media to a file.")
-    parser.add_argument(
-        "-v",
-        "--visualize",
-        action="store_true",
-        help="Open an OpenCV window to show image.",
-    )
+    import sys
 
-    args = parser.parse_args()
-
-    remote_address = args.server_url
-    if not remote_address.startswith("http://"):
-        remote_address = "http://" + remote_address
-    print(f"Remote ip: {remote_address}")
-
-    signaling_server = SignalingServer(remote_address)
-    peer_connection = RTCPeerConnection()
-
-    if args.record_to:
-        recorder = MediaRecorder(args.record_to)
+    if len(sys.argv) > 1:
+        remote_address = sys.argv[1]
+        if not remote_address.startswith("http://"):
+            remote_address = "http://" + remote_address
+        print(f"Remote ip: {remote_address}")
+        asyncio.run(start_receiving_stream(remote_address))
     else:
-        recorder = MediaBlackhole()
-
-    asyncio.run(
-        start_receiving_stream(
-            peer_connection, signaling_server, recorder, args.visualize
-        )
-    )
+        print("Please provide the remote address as an argument.")
